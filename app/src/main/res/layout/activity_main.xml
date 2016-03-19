@@ -8,6 +8,14 @@
     android:fitsSystemWindows="true"
     tools:context="com.example.suneelbelkhale.vision649.MainActivity">
 
+    <TextureView
+        android:id="@+id/textureView1"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentTop="true" />
+
+
     <!--<android.support.design.widget.AppBarLayout-->
         <!--android:layout_width="match_parent"-->
         <!--android:layout_height="wrap_content"-->
@@ -24,6 +32,7 @@
 
     <include layout="@layout/content_main" />
 
+
     <!--<org.opencv.android.JavaCameraView-->
         <!--android:layout_width="fill_parent"-->
         <!--android:layout_height="fill_parent"-->
@@ -32,13 +41,13 @@
         <!--opencv:show_fps="true"-->
         <!--opencv:camera_id="any" />-->
 
-    <org.opencv.android.JavaCameraView
-        android:layout_width="fill_parent"
-        android:layout_height="fill_parent"
-        android:visibility="gone"
-        android:id="@+id/HelloOpenCvView_java"
-        opencv:show_fps="true"
-        opencv:camera_id="any" />
+    <!--<org.opencv.android.JavaCameraView-->
+        <!--android:layout_width="fill_parent"-->
+        <!--android:layout_height="fill_parent"-->
+        <!--android:visibility="gone"-->
+        <!--android:id="@+id/HelloOpenCvView_java"-->
+        <!--opencv:show_fps="true"-->
+        <!--opencv:camera_id="any" />-->
 
     <!--<org.opencv.android.NativeCameraView-->
         <!--android:layout_width="fill_parent"-->

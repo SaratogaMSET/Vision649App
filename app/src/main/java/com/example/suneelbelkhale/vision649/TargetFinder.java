@@ -41,8 +41,11 @@ public class TargetFinder {
     public static String image_4 = "/home/lvuser/frc_images/from\\ position\\ 4.jpg";
     public static String image_5 = "/home/lvuser/frc_images/from\\ position\\ 5.jpg";
 
-    public Mat imageHSV, erode, dilate, hierarchy;
+    public Mat hierarchy;
     public List<MatOfPoint> contours;
+    public Mat finalImage;
+
+    Rect roi;
 
 
     public Center findOneRetroTarget(Mat image){
@@ -50,33 +53,8 @@ public class TargetFinder {
         Center center =  new Center(-1,-1); //default
         Rect r1 = new Rect();
 
-        imageHSV = new Mat();
-
-        Imgproc.cvtColor(image, imageHSV, Imgproc.COLOR_BGR2HSV);
-
-        //Core.inRange(imageHSV, new Scalar(78, 124, 213), new Scalar(104, 255, 255), imageHSV);
-
-        Core.inRange(imageHSV, new Scalar(60, 41, 218), new Scalar(94, 255, 255), imageHSV);
-
-        //BLUR
-        Imgproc.GaussianBlur(imageHSV, imageHSV, new Size(5,5), 0);
-
-        //DILATE > ERODE > DILATE
-        dilate = Imgproc.getStructuringElement(Imgproc.MORPH_DILATE, new Size(3, 3));
-        Imgproc.dilate(imageHSV, imageHSV, dilate);//dilate
-        erode = Imgproc.getStructuringElement(Imgproc.MORPH_ERODE, new Size(3, 3));
-        Imgproc.erode(imageHSV, imageHSV, erode);
-        Imgproc.dilate(imageHSV, imageHSV, dilate);
-
-        //BLUR PART 2
-        Imgproc.GaussianBlur(imageHSV, imageHSV, new Size(15,15), 0);
-
-        //THRESHING
-        Imgproc.threshold(imageHSV, imageHSV, 73, 255, Imgproc.THRESH_BINARY);
-
-        //DILATE ONCE MORE
-        Imgproc.dilate(imageHSV, imageHSV, dilate);
-
+        ///
+        finalImage = performThresh(image);
         /************/
         //CONTOURS AND OBJECT DETECTION
         contours = new ArrayList<>();
@@ -85,7 +63,7 @@ public class TargetFinder {
         Moments mu;
 
         // find contours
-        Imgproc.findContours(imageHSV, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_SIMPLE);
+        Imgproc.findContours(finalImage, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_SIMPLE);
 
         // if any contour exist...
         if (hierarchy.size().height > 0 && hierarchy.size().width > 0)
@@ -111,12 +89,12 @@ public class TargetFinder {
 
             //print details of the biggest one
             String name = "Obj " + largest;
-            Rect r = Imgproc.boundingRect(contours.get(largest));
+            roi = Imgproc.boundingRect(contours.get(largest));
             mu = Imgproc.moments(contours.get(largest));
 
             //ASSUME LARGEST is the target, now calc dist
 
-            double dist = calcDistAxis206(r.width, WIDTH_TARGET, 320, STANDARD_VIEW_ANGLE);
+            double dist = calcDistAxis206(roi.width, WIDTH_TARGET, 320, STANDARD_VIEW_ANGLE);
             center = new Center(mu.get_m10()/mu.get_m00(), mu.get_m01()/mu.get_m00());
 
         }
@@ -135,14 +113,47 @@ public class TargetFinder {
 //	    	SmartDashboard.putNumber("Mat Width", image.width());
 
         //mem save
-        image.release();
-        imageHSV.release();
-        erode.release();
-        dilate.release();
+
         hierarchy.release();
-        System.gc();
+
 
         return center;
+    }
+
+    public Mat performThresh(Mat image){
+        Mat imageHSV, erode, dilate;
+        imageHSV = new Mat();
+
+        Imgproc.cvtColor(image, imageHSV, Imgproc.COLOR_BGR2HSV);
+
+        //Core.inRange(imageHSV, new Scalar(78, 124, 213), new Scalar(104, 255, 255), imageHSV);
+
+        Core.inRange(imageHSV, new Scalar(60, 41, 218), new Scalar(94, 255, 255), imageHSV);
+
+        //BLUR
+        Imgproc.GaussianBlur(imageHSV, imageHSV, new Size(5, 5), 0);
+
+        //DILATE > ERODE > DILATE
+        dilate = Imgproc.getStructuringElement(Imgproc.MORPH_DILATE, new Size(3, 3));
+        Imgproc.dilate(imageHSV, imageHSV, dilate);//dilate
+        erode = Imgproc.getStructuringElement(Imgproc.MORPH_ERODE, new Size(3, 3));
+        Imgproc.erode(imageHSV, imageHSV, erode);
+        Imgproc.dilate(imageHSV, imageHSV, dilate);
+
+        //BLUR PART 2
+        Imgproc.GaussianBlur(imageHSV, imageHSV, new Size(15, 15), 0);
+
+        //THRESHING
+        Imgproc.threshold(imageHSV, imageHSV, 73, 255, Imgproc.THRESH_BINARY);
+
+        //DILATE ONCE MORE
+        Imgproc.dilate(imageHSV, imageHSV, dilate);
+
+        erode.release();
+        dilate.release();
+        System.gc();
+
+        return imageHSV;
     }
 
     public double calcDistAxis206(double obj_pix, double obj_in, double view_pix, double max_cam_angle){
