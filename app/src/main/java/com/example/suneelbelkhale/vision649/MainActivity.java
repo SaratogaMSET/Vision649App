@@ -51,12 +51,16 @@ import org.opencv.android.Utils;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfPoint;
 import org.opencv.core.Point;
 import org.opencv.core.Scalar;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
+import org.opencv.imgproc.Moments;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
@@ -81,10 +85,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             Manifest.permission.WRITE_EXTERNAL_STORAGE
     };
 
-    String TAG = "Vision649";
-    String fileName = "vision649.txt";
-
-    public boolean canWrite = true;
+    static String TAG = "Vision649";
+    static String fileName = "vision649.txt";
 
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
@@ -243,25 +245,31 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
         TargetFinder targetFinder = new TargetFinder();
 
-        Mat m = new Mat();
+        Mat m = new Mat(), original = new Mat();
 
 
-        inputFrame.rgba().copyTo(m);
+        inputFrame.rgba().copyTo(original);
+
+        original.copyTo(m);
+
 
         Log.d(TAG, "M: " + m.width() + "x" + m.height());
 
+        //m = targetFinder.viewHSVFromFile(m);
+
         //m = targetFinder.performThresh(m);
+
 
         Center c = targetFinder.findOneRetroTarget(m);
 
 
         if (!c.equals(TargetFinder.NO_CENTER)) {
-            Imgproc.line(m, new Point(c.x + 10, c.y), new Point(c.x - 10, c.y), new Scalar(0, 255, 0), 1);
-            Imgproc.line(m, new Point(c.x, c.y + 10), new Point(c.x, c.y - 10), new Scalar(0, 255, 0), 1);
+            Imgproc.line(original, new Point(c.x + 10, c.y), new Point(c.x - 10, c.y), new Scalar(255, 0, 0), 2);
+            Imgproc.line(original, new Point(c.x, c.y + 10), new Point(c.x, c.y - 10), new Scalar(255, 0, 0), 2);
         }
 
         else {
-            Imgproc.putText(m, "No Target Detected", new Point(10, 10), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(255,0,0));
+            Imgproc.putText(original, "No Target Detected", new Point(10, 10), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(0,0,255));
         }
 
         DecimalFormat df = new DecimalFormat("#.##");
@@ -270,7 +278,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
         Log.d("T>>>>>", "" + (System.currentTimeMillis() - t1));
 
-        return m;
+        return original;
 
     }
 
@@ -298,6 +306,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             Log.e("Exception", "File write failed: " + e.toString());
         }
     }
+
+
 
 }
 
