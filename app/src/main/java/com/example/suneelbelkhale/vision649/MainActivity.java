@@ -51,6 +51,7 @@ import org.opencv.android.Utils;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfInt;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.Point;
 import org.opencv.core.Scalar;
@@ -73,6 +74,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Timer;
 
 
@@ -236,6 +238,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     }
 
+    Map<String, Object> results;
+
     @Override
     public Mat onCameraFrame(PortraitCameraView.CvCameraViewFrame inputFrame) {
         //TODO this is where we will add image processing
@@ -252,34 +256,37 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
         original.copyTo(m);
 
+        results = targetFinder.shapeDetectTarget(m);
 
-        Log.d(TAG, "M: " + m.width() + "x" + m.height());
+        Center c = (Center)results.get("center");
+        m = (Mat)results.get("m");
+        Mat thresh = (Mat)results.get("thresh");
+        Mat subImage = (Mat)results.get("subImage");
+        Mat blobMat = (Mat)results.get("blobMat");
 
-        //m = targetFinder.viewHSVFromFile(m);
+        DecimalFormat df = new DecimalFormat("#.##");
 
-        //m = targetFinder.performThresh(m);
+        String formattedCenter = "C (" + df.format(c.x) + ", " + df.format(c.y) + ")";
 
-
-        Center c = targetFinder.findOneRetroTarget(m);
-
+        Log.d(TAG, formattedCenter);
 
         if (!c.equals(TargetFinder.NO_CENTER)) {
+            Imgproc.putText(original, "FOUND: " + formattedCenter, new Point(10, 10), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(255,0,0));
             Imgproc.line(original, new Point(c.x + 10, c.y), new Point(c.x - 10, c.y), new Scalar(255, 0, 0), 2);
             Imgproc.line(original, new Point(c.x, c.y + 10), new Point(c.x, c.y - 10), new Scalar(255, 0, 0), 2);
+            Imgproc.rectangle(original, roi);
         }
 
         else {
             Imgproc.putText(original, "No Target Detected", new Point(10, 10), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(0,0,255));
         }
 
-        DecimalFormat df = new DecimalFormat("#.##");
         writeToFile(fileName, "" + df.format(c.x) + " " + df.format(c.y));//+ " <> Time: " + df.format(System.currentTimeMillis()));
 
 
         Log.d("T>>>>>", "" + (System.currentTimeMillis() - t1));
 
         return original;
-
     }
 
 

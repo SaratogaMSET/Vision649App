@@ -4,8 +4,12 @@ import android.os.Environment;
 import android.util.Log;
 
 import org.opencv.core.Core;
+import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfInt;
 import org.opencv.core.MatOfPoint;
+import org.opencv.core.MatOfPoint2f;
+import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
@@ -16,7 +20,9 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Created by suneelbelkhale1 on 3/15/16.
@@ -47,10 +53,25 @@ public class TargetFinder {
 
     Rect roi;
 
+    //holds the hsv constants (enables faster editing through adb shell)
     static String HSVFileName = "hsv.txt";
     static String TAG = "TargetFinder";
 
 
+    //old method
+
+    /**
+     * Algorithm:
+     *
+     *  calls performThresh (see below)
+     *  find contours
+     *  find the largest object that is in the frame & is greater than the max size and in the upper half of the frame
+     *
+     * @return
+     *
+     *  Center found (NO_CENTER if none found)
+     *
+     */
 
     public Center findOneRetroTarget(Mat image){
 
@@ -70,7 +91,7 @@ public class TargetFinder {
         // find contours
         Imgproc.findContours(finalImage, contours, hierarchy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE);
 
-        boolean noValid = false;
+        boolean noValid = true;
         // if any contour exist...
         if (hierarchy.size().height > 0 && hierarchy.size().width > 0)
         {
@@ -83,16 +104,13 @@ public class TargetFinder {
                 mu = Imgproc.moments(contours.get(i));
                 double y_coord = mu.get_m01()/mu.get_m00();
                 //greater than min size AND in the upper part of photo AND greater than the last biggest
-                if (area > 10.0  &&  y_coord < MAX_Y_COORD && area >= Imgproc.contourArea(contours.get(largest))){
-
+                if (area > 20.0  &&  y_coord < MAX_Y_COORD && area >= Imgproc.contourArea(contours.get(largest))){
+                    noValid = false;
                     largest = i;
                     //NetworkTable tab = NetworkTable.getTable("Obj " + i);
 
                     //Center:    mu.m10()/mu.m00() , mu.m01()/mu.m00()
 
-                }
-                else if (largest == i && contours.size() == 1){ //if we are on the first iteration and the first object does not satisfy given contraints
-                    noValid = true;
                 }
             }
 
@@ -101,28 +119,12 @@ public class TargetFinder {
 
             //ASSUME LARGEST is the target, now calc dist
 
+            //old
             double dist = calcDistAxis206(roi.width, WIDTH_TARGET, 320, STANDARD_VIEW_ANGLE);
+
             center = new Center(mu.get_m10()/mu.get_m00(), mu.get_m01()/mu.get_m00());
 
         }
-        else{
-//	    		SmartDashboard.putNumber("Obj 0 Center X: ", 0);
-//	        	SmartDashboard.putNumber("Obj 0 Center Y: ", 0);
-//	        	SmartDashboard.putNumber("Obj 0 Area: ", 0);
-//	        	SmartDashboard.putNumber("Obj 0 width: ", 0);
-//	        	SmartDashboard.putNumber("Obj 0 height: ", 0);
-//	        	SmartDashboard.putNumber("Obj 0 Distance: ", 0);
-        }
-
-
-//	    	SmartDashboard.putNumber("Number of contours in image", contours.size());
-//	    	SmartDashboard.putNumber("Mat Height", image.height());
-//	    	SmartDashboard.putNumber("Mat Width", image.width());
-
-        //mem save
-
-        hierarchy.release();
-
 
         if (noValid){
             return NO_CENTER;
@@ -132,21 +134,39 @@ public class TargetFinder {
         }
     }
 
+    //also old
+
+    /**
+     * Algorithm:
+     *
+     *  Gaussian Blur
+     *  convert to HSV
+     *  HSV threshold
+     *  dilate
+     *  erode
+     *  dilate
+     *  Blur again
+     *  binary threshold to get rid of small elements
+     *  dilate
+     *
+     * @return
+     *
+     *  threshed Mat
+     *
+     */
+
     public Mat performThresh(Mat image){
         Mat imageHSV, erode, dilate;
         imageHSV = new Mat();
 
-//        Imgproc.cvtColor(image, imageHSV, Imgproc.COLOR_BGR2HSV);
-//
-//        //Core.inRange(imageHSV, new Scalar(78, 124, 213), new Scalar(104, 255, 255), imageHSV);
-//
-//        Core.inRange(imageHSV, new Scalar(60, 41, 218), new Scalar(94, 255, 255), imageHSV);
+
+        //BLUR
+        Imgproc.GaussianBlur(image, image, new Size(11,11), 0);
 
         //read HSV from text file
         imageHSV = viewHSVFromFile(image);
 
-        //BLUR
-        Imgproc.GaussianBlur(imageHSV, imageHSV, new Size(5, 5), 0);
+
 
         //DILATE > ERODE > DILATE
         dilate = Imgproc.getStructuringElement(Imgproc.MORPH_DILATE, new Size(3, 3));
@@ -164,6 +184,7 @@ public class TargetFinder {
         //DILATE ONCE MORE
         Imgproc.dilate(imageHSV, imageHSV, dilate);
 
+
         erode.release();
         dilate.release();
         System.gc();
@@ -171,6 +192,14 @@ public class TargetFinder {
         return imageHSV;
     }
 
+
+    /**
+     *
+     * @return
+     *
+     *  converted binary Mat based on text file's constants after the HSV thresh
+     *
+     */
 
     ///CURRENT BEST: "(33,7,250)->(180,120,255)"
     public Mat viewHSVFromFile(Mat m){
@@ -184,8 +213,8 @@ public class TargetFinder {
             vals = new Scalar[2];
                             //            vals[0] = new Scalar(60, 41, 218);    OLLLDDDDD
                             //            vals[1] = new Scalar(94, 255, 255);   OLDDDER
-            vals[0] = new Scalar(33, 7, 250);
-            vals[1] = new Scalar(180, 120, 255);
+            vals[0] = new Scalar(33, 4, 230);
+            vals[1] = new Scalar(85, 45, 255);
             Log.d(TAG, "File read failed ---- defaulting");
         }
 
@@ -194,6 +223,7 @@ public class TargetFinder {
         return m;
     }
 
+    //reading from text file
     public Scalar[] readHSVElements(){
         try {
             File root = new File(Environment.getExternalStorageDirectory(), "Vision");
@@ -218,10 +248,188 @@ public class TargetFinder {
         }
     }
 
+    //for testing purposes
+    public Mat testingAlgorithm(Mat m){
 
+        Imgproc.GaussianBlur(m, m, new org.opencv.core.Size(11, 11), 0);
+
+        Imgproc.cvtColor(m, m, Imgproc.COLOR_BGR2GRAY);
+
+        Imgproc.threshold(m, m, 245, 255, Imgproc.THRESH_TOZERO);
+
+
+        return m;
+
+    }
+
+    /**
+     * Algorithm:
+     *
+     *  Gaussian Blur
+     *  cvt to gray
+     *  threshold (Tozero)
+     *      //TODO add erode and dilates and other thresh fcts here
+     *  find contours
+     *  find, draw, and fill convex hulls
+     *  subtract the threshed image from the one with filled convex hulls to get the new filled portions (blobs)
+     *      ->this allows us to roughly find a U shape
+     *  find contours of the blobs
+     *  approximate the polygon (should be a rectangle)
+     *  find the largest object & is greater than the max size & has 4 corners (and is not circular)
+     *  Calculate its center and other features
+     *
+     * @return
+     *
+     *  Dictionary of objects
+     *  -> "center" Center of found object
+     *  -> "roi" Bounding rect of selected object
+     *  -> "m" after convex hull fill
+     *  -> "thresh" the mat after initial thresholding
+     *  -> "subImage" subtraced image
+     *  -> "blobMat" after find contours of blobs
+     *
+     */
+    public Map<String, Object> shapeDetectTarget(Mat m){
+
+        Center center = NO_CENTER;
+
+        Imgproc.GaussianBlur(m, m, new org.opencv.core.Size(11, 11), 0);
+
+        Imgproc.cvtColor(m, m, Imgproc.COLOR_BGR2GRAY);
+
+        List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+        List<MatOfInt> hull = new ArrayList<MatOfInt>();
+
+        Imgproc.threshold(m, m, 230, 255, Imgproc.THRESH_TOZERO);
+
+        Mat thresh = new Mat(), subImage = new Mat();
+
+        Imgproc.findContours(m, contours, new Mat(), Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE);
+        m.copyTo(thresh); //copy filtered image
+
+        MatOfInt hullInt = new MatOfInt();
+        MatOfPoint hullPointMat = new MatOfPoint();
+        List<Point> hullPointList = new ArrayList<>();
+        List<MatOfPoint> hullPoints = new ArrayList<>();
+
+        //draw convex Hulls
+        for (int k=0; k < contours.size(); k++){
+            Imgproc.convexHull(contours.get(k), hullInt);
+
+            hullPointList.clear();
+            for(int j=0; j < hullInt.toList().size(); j++){
+                hullPointList.add(contours.get(k).toList().get(hullInt.toList().get(j)));
+            }
+
+            hullPointMat.fromList(hullPointList);
+            hullPoints.add(hullPointMat);
+
+        }
+        m = new Mat();
+        thresh.copyTo(m); //bring the old one back and draw new stuff on it
+
+        //at this point thresh and m are the same (no contours just the threshold)
+        //draw the full contours on both
+
+//        Imgproc.drawContours(thresh, contours, -1, new Scalar(255, 255, 255), 1);
+        Imgproc.fillPoly(thresh, contours, new Scalar(255, 255, 255));
+//
+//        Imgproc.drawContours(m, contours, -1, new Scalar(255, 255, 255), 1);
+        Imgproc.fillPoly(m, contours, new Scalar(255, 255, 255));
+//
+//        Imgproc.drawContours(m, hullPoints, -1, new Scalar(255, 255, 255), 1);
+        for (int i = 0; i < hullPoints.size(); i++) {
+            Imgproc.fillConvexPoly(m, hullPoints.get(i), new Scalar(255, 255, 255));
+        }
+
+
+        //now we are left with whatever was filled in
+        Core.subtract(m, thresh, subImage);
+
+        Mat blobMat = new Mat();
+        subImage.copyTo(blobMat);
+        List<MatOfPoint> blobContours = new ArrayList<>();
+        Imgproc.findContours(blobMat, blobContours, new Mat(), Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE);
+
+        boolean noValid = true;
+        Moments mu;
+        MatOfPoint2f approx = new MatOfPoint2f();
+        // if any contour exist...
+        if (blobContours.size() > 0) {
+            int largest = 0;
+
+            // for each remaining contour, find the biggest
+            for (int h = 0; h < blobContours.size(); h++) {
+                MatOfPoint cont = blobContours.get(h);
+                double area = Imgproc.contourArea(cont);
+                mu = Imgproc.moments(cont);
+                //number of corners
+                approx = new MatOfPoint2f(cont.toArray());
+
+                Point circ_center = new Point();
+                float[] radius = new float[1];
+
+                Imgproc.minEnclosingCircle(new MatOfPoint2f(cont.toArray()), circ_center, radius);
+                boolean circle = Math.abs(area - Math.PI * radius[0] * radius[0]) < 5;
+                //greater than min size AND in the upper part of photo AND greater than the last biggest
+                if (area > 50.0 && area >= Imgproc.contourArea(blobContours.get(largest)) && (approx.rows() == 4 && !circle)) {
+                    noValid = false;
+                    largest = h;
+
+                }
+
+            }
+
+
+            roi = Imgproc.boundingRect(blobContours.get(largest));
+            mu = Imgproc.moments(blobContours.get(largest));
+            center = new Center(mu.get_m10() / mu.get_m00(), mu.get_m01() / mu.get_m00());
+//            Log.d(TAG, "m00: " + mu.get_m00());
+
+        }
+
+        //the array we return
+        //          1:
+        Map<String, Object> foundElements = new HashMap<>();
+//        List<Object> foundElements = new ArrayList<>();
+
+
+        if (noValid) {
+            foundElements.put("center", NO_CENTER);
+
+        }
+        else {
+            foundElements.put("center", center);
+        }
+
+        foundElements.put("roi", roi);
+        foundElements.put("m", m);
+        foundElements.put("thresh", thresh);
+        foundElements.put("subImage", subImage);
+        foundElements.put("blobMat", blobMat);
+
+
+        return foundElements;
+    }
+
+
+    //old
     public double calcDistAxis206(double obj_pix, double obj_in, double view_pix, double max_cam_angle){
         return view_pix * obj_in / (2*Math.tan(max_cam_angle) * obj_pix);
     }
 
+
+
+//        Imgproc.cornerHarris(m, cornerMat,2,3,0.04);
+//        Core.normalize(cornerMat, cornerMat, 0, 255, Core.NORM_MINMAX, CvType.CV_32FC1, new Mat());
+//        Core.convertScaleAbs(cornerMat, cornerMat);
+
+//        for (int x = 0; x < cornerMat.rows(); x++){
+//            for (int y = 0; y < cornerMat.cols(); y++) {
+//                if (cornerMat.get(x,y)[0] > 200 ){
+//                    Imgproc.circle(m, new Point(x,y), 5, new Scalar(255,0,0));
+//                }
+//            }
+//        }
 
 }
