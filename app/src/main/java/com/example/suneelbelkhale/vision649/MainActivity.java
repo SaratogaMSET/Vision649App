@@ -54,6 +54,7 @@ import org.opencv.core.Mat;
 import org.opencv.core.MatOfInt;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.Point;
+import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
@@ -263,6 +264,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         Mat thresh = (Mat)results.get("thresh");
         Mat subImage = (Mat)results.get("subImage");
         Mat blobMat = (Mat)results.get("blobMat");
+        Rect roi = (Rect)results.get("roi");
 
         DecimalFormat df = new DecimalFormat("#.##");
 
@@ -274,7 +276,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             Imgproc.putText(original, "FOUND: " + formattedCenter, new Point(10, 10), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(255,0,0));
             Imgproc.line(original, new Point(c.x + 10, c.y), new Point(c.x - 10, c.y), new Scalar(255, 0, 0), 2);
             Imgproc.line(original, new Point(c.x, c.y + 10), new Point(c.x, c.y - 10), new Scalar(255, 0, 0), 2);
-            Imgproc.rectangle(original, roi);
+            Imgproc.rectangle(original, roi.tl(), roi.br(), new Scalar(0,255,0));
+
         }
 
         else {
