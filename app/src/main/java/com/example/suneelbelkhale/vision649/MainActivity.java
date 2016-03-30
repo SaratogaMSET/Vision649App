@@ -264,7 +264,10 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         Mat thresh = (Mat)results.get("thresh");
         Mat subImage = (Mat)results.get("subImage");
         Mat blobMat = (Mat)results.get("blobMat");
+        Mat combined = (Mat)results.get("combined");
+        Mat hsv = (Mat)results.get("hsv");
         Rect roi = (Rect)results.get("roi");
+
 
         DecimalFormat df = new DecimalFormat("#.##");
 
@@ -277,7 +280,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             Imgproc.line(original, new Point(c.x + 10, c.y), new Point(c.x - 10, c.y), new Scalar(255, 0, 0), 2);
             Imgproc.line(original, new Point(c.x, c.y + 10), new Point(c.x, c.y - 10), new Scalar(255, 0, 0), 2);
             Imgproc.rectangle(original, roi.tl(), roi.br(), new Scalar(0,255,0));
-
         }
 
         else {

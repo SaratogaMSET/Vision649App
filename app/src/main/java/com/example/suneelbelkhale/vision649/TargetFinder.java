@@ -284,6 +284,7 @@ public class TargetFinder {
      *  -> "center" Center of found object
      *  -> "roi" Bounding rect of selected object
      *  -> "m" after convex hull fill
+     *  -> "hsv"
      *  -> "thresh" the mat after initial thresholding
      *  -> "subImage" subtraced image
      *  -> "blobMat" after find contours of blobs
@@ -292,20 +293,45 @@ public class TargetFinder {
     public Map<String, Object> shapeDetectTarget(Mat m){
 
         Center center = NO_CENTER;
+        Mat hsv = new Mat();
+        Mat dilate = Imgproc.getStructuringElement(Imgproc.MORPH_DILATE, new Size(3, 3));
+        Mat erode = Imgproc.getStructuringElement(Imgproc.MORPH_ERODE, new Size(3, 3));
 
         Imgproc.GaussianBlur(m, m, new org.opencv.core.Size(11, 11), 0);
-
-        Imgproc.cvtColor(m, m, Imgproc.COLOR_BGR2GRAY);
 
         List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
         List<MatOfInt> hull = new ArrayList<MatOfInt>();
 
-        Imgproc.threshold(m, m, 230, 255, Imgproc.THRESH_TOZERO);
+
+
+        //hsv side
+        Imgproc.cvtColor(m, hsv, Imgproc.COLOR_BGR2HSV);
+        Core.inRange(hsv, new Scalar(25, 2, 180), new Scalar(120, 180, 255), hsv); //relatively loose
+
+        Imgproc.dilate(hsv, hsv, dilate);//dilate
+        Imgproc.erode(hsv, hsv, erode);
+        Imgproc.dilate(hsv, hsv, dilate);
+        Imgproc.dilate(m, m, dilate);
+
+        //brightness side
+        Imgproc.cvtColor(m, m, Imgproc.COLOR_BGR2GRAY);
+        Imgproc.threshold(m, m, 210, 255, Imgproc.THRESH_TOZERO);
+
+        Imgproc.dilate(m, m, dilate);//dilate
+        Imgproc.erode(m, m, erode);
+        Imgproc.dilate(m, m, dilate);
+        Imgproc.dilate(m, m, dilate);
+
+        //find overlap
+        Mat combined = new Mat();
+        Core.bitwise_and(m, hsv, combined); //think &&
+        Imgproc.dilate(combined, m, dilate); //dilate to be safe
 
         Mat thresh = new Mat(), subImage = new Mat();
+        m.copyTo(thresh); //copy filtered image
 
         Imgproc.findContours(m, contours, new Mat(), Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE);
-        m.copyTo(thresh); //copy filtered image
+
 
         MatOfInt hullInt = new MatOfInt();
         MatOfPoint hullPointMat = new MatOfPoint();
@@ -321,30 +347,40 @@ public class TargetFinder {
                 hullPointList.add(contours.get(k).toList().get(hullInt.toList().get(j)));
             }
 
+            hullPointMat = new MatOfPoint();
             hullPointMat.fromList(hullPointList);
             hullPoints.add(hullPointMat);
 
         }
         m = new Mat();
         thresh.copyTo(m); //bring the old one back and draw new stuff on it
-
-        //at this point thresh and m are the same (no contours just the threshold)
-        //draw the full contours on both
-
+//
+//        //at this point thresh and m are the same (no contours just the threshold)
+//        //draw the full contours on both
+//
 //        Imgproc.drawContours(thresh, contours, -1, new Scalar(255, 255, 255), 1);
-        Imgproc.fillPoly(thresh, contours, new Scalar(255, 255, 255));
-//
-//        Imgproc.drawContours(m, contours, -1, new Scalar(255, 255, 255), 1);
-        Imgproc.fillPoly(m, contours, new Scalar(255, 255, 255));
-//
+//        Imgproc.fillPoly(thresh, contours, new Scalar(255, 255, 255));
+////
+        //Imgproc.drawContours(m, contours, -1, new Scalar(255, 255, 255), 1);
+//        Imgproc.fillPoly(m, contours, new Scalar(255, 255, 255));
+////
 //        Imgproc.drawContours(m, hullPoints, -1, new Scalar(255, 255, 255), 1);
+//        Imgproc.fillPoly(m,hullPoints, new Scalar(255,255,255));
+
+
+        MatOfPoint2f approx;
+        Log.d(TAG, "H SIZE: " + hullPoints.size());
         for (int i = 0; i < hullPoints.size(); i++) {
-            Imgproc.fillConvexPoly(m, hullPoints.get(i), new Scalar(255, 255, 255));
+            Imgproc.fillConvexPoly(m, hullPoints.get(i), new Scalar(255,255,255));
         }
 
 
         //now we are left with whatever was filled in
         Core.subtract(m, thresh, subImage);
+
+        Imgproc.erode(subImage, subImage, erode);
+        Imgproc.erode(subImage, subImage, erode);
+        Imgproc.threshold(subImage,subImage,250,255,Imgproc.THRESH_BINARY);
 
         Mat blobMat = new Mat();
         subImage.copyTo(blobMat);
@@ -353,8 +389,9 @@ public class TargetFinder {
 
         boolean noValid = true;
         Moments mu;
-        MatOfPoint2f approx = new MatOfPoint2f();
+        approx = new MatOfPoint2f();
         // if any contour exist...
+        Log.d(TAG, "Blob count: " + blobContours.size());
         if (blobContours.size() > 0) {
             int largest = 0;
 
@@ -364,22 +401,26 @@ public class TargetFinder {
                 double area = Imgproc.contourArea(cont);
                 mu = Imgproc.moments(cont);
                 //number of corners
-                approx = new MatOfPoint2f(cont.toArray());
+                approx = new MatOfPoint2f();
+                Imgproc.approxPolyDP(new MatOfPoint2f(cont.toArray()), approx,8, true);
 
                 Point circ_center = new Point();
                 float[] radius = new float[1];
 
+
+
                 Imgproc.minEnclosingCircle(new MatOfPoint2f(cont.toArray()), circ_center, radius);
                 boolean circle = Math.abs(area - Math.PI * radius[0] * radius[0]) < 5;
                 //greater than min size AND in the upper part of photo AND greater than the last biggest
-                if (area > 50.0 && area >= Imgproc.contourArea(blobContours.get(largest)) && (approx.rows() == 4 && !circle)) {
+                if (area > 50.0 && area >= Imgproc.contourArea(blobContours.get(largest))&& approx.rows() == 4){ //&& !circle)) {
                     noValid = false;
                     largest = h;
 
                 }
 
-            }
 
+
+            }
 
             roi = Imgproc.boundingRect(blobContours.get(largest));
             mu = Imgproc.moments(blobContours.get(largest));
@@ -404,7 +445,9 @@ public class TargetFinder {
 
         foundElements.put("roi", roi);
         foundElements.put("m", m);
+        foundElements.put("hsv", hsv);
         foundElements.put("thresh", thresh);
+        foundElements.put("combined", combined);
         foundElements.put("subImage", subImage);
         foundElements.put("blobMat", blobMat);
 
