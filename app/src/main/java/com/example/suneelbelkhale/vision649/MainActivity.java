@@ -7,6 +7,7 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ImageFormat;
 import android.graphics.PixelFormat;
 import android.graphics.SurfaceTexture;
@@ -26,6 +27,7 @@ import android.media.ImageReader;
 import android.media.ImageWriter;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -42,6 +44,7 @@ import android.view.WindowManager;
 import android.view.ViewGroup.LayoutParams;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 
@@ -90,8 +93,15 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     String SERVER_IP = "10.6.49.70";
     int SERVER_PORT = 5050;
 
+    int MAX_X = 288, MAX_Y = 352; //cam resolution
+    int green = Color.parseColor("#43fa00"), red = Color.parseColor("#fa0000");
+
+    Handler handler = new Handler();
+
     static String TAG = "Vision649";
     static String fileName = "vision649.txt";
+
+    RelativeLayout colorScreen;
 
     Thread clientThread;
     private PortraitCameraView mOpenCvCameraView;
@@ -155,6 +165,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
 //        mCamera = Camera.open();
 //        mCamera.setDisplayOrientation(90);
+
+        colorScreen = (RelativeLayout) findViewById(R.id.colorBack);
 
         mOpenCvCameraView = (PortraitCameraView) findViewById(R.id.HelloOpenCvView_java);
         mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
@@ -259,17 +271,42 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         //Log.d(TAG, formattedCenter);
 
         if (!c.equals(TargetFinder.NO_CENTER)) {
-            Imgproc.putText(original, "FOUND: " + formattedCenter, new Point(10, 10), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(255,0,0));
+            Imgproc.putText(original, "FOUND: " + formattedCenter, new Point(10, 20), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(255,0,0));
             Imgproc.line(original, new Point(c.x + 10, c.y), new Point(c.x - 10, c.y), new Scalar(255, 0, 0), 2);
             Imgproc.line(original, new Point(c.x, c.y + 10), new Point(c.x, c.y - 10), new Scalar(255, 0, 0), 2);
             Imgproc.rectangle(original, roi.tl(), roi.br(), new Scalar(0,255,0));
+            // update the background
+            if (c.x > MAX_X/2.0 - 5 && c.x < MAX_X/2.0 + 5){
+                handler.post(new Runnable(){
+                     @Override
+                     public void run() {
+                         colorScreen.setBackgroundColor(green);
+                     }
+                 });
+            }
+            else {
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        colorScreen.setBackgroundColor(red);
+                    }
+                });
+            }
+
         }
 
         else {
-            Imgproc.putText(original, "No Target Detected", new Point(10, 10), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(0,0,255));
+            Imgproc.putText(original, "No Target Detected", new Point(10, 20), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(0, 0, 255));
+            handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    colorScreen.setBackgroundColor(red);
+                }
+            });
         }
 
         writeToFile(fileName, "" + df.format(c.x) + " " + df.format(c.y));//+ " <> Time: " + df.format(System.currentTimeMillis()));
+
 
         //post it to the rio
         clientThread = new Thread(new Client(c));
