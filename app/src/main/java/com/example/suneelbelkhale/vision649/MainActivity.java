@@ -101,6 +101,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     static String TAG = "Vision649";
     static String fileName = "vision649.txt";
 
+    TargetFinder targetFinder;
+
     RelativeLayout colorScreen;
 
     Thread clientThread;
@@ -175,6 +177,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
 
+        targetFinder = new TargetFinder();
+
 
     }
 
@@ -193,6 +197,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         super.onResume();
         OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_3_1_0, this,
                 mLoaderCallback);
+
+        targetFinder = new TargetFinder();
     }
 
     @Override
@@ -243,8 +249,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
         double t1 = System.currentTimeMillis();
 
-        TargetFinder targetFinder = new TargetFinder();
-
         Mat m = new Mat(), original = new Mat();
 
 
@@ -252,7 +256,13 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
         original.copyTo(m);
 
+        //initial
+        double _time = Calendar.getInstance().getTimeInMillis();
+
         results = targetFinder.shapeDetectTarget(m);
+
+        Log.d("->timelog", "SHAPE DETECT TARGET FULL t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+        _time = Calendar.getInstance().getTimeInMillis();
 
         Center c = (Center)results.get("center");
         m = (Mat)results.get("m");
@@ -261,7 +271,11 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         Mat blobMat = (Mat)results.get("blobMat");
         Mat combined = (Mat)results.get("combined");
         Mat hsv = (Mat)results.get("hsv");
+//        Mat ycrcb = (Mat)results.get("ycrcb");
         Rect roi = (Rect)results.get("roi");
+
+        Log.d("->timelog", "Pulling data t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+        _time = Calendar.getInstance().getTimeInMillis();
 
 
         DecimalFormat df = new DecimalFormat("#.##");
@@ -271,20 +285,19 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         //Log.d(TAG, formattedCenter);
 
         if (!c.equals(TargetFinder.NO_CENTER)) {
-            Imgproc.putText(original, "FOUND: " + formattedCenter, new Point(10, 20), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(255,0,0));
+            Imgproc.putText(original, "FOUND: " + formattedCenter, new Point(10, 20), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(255, 0, 0));
             Imgproc.line(original, new Point(c.x + 10, c.y), new Point(c.x - 10, c.y), new Scalar(255, 0, 0), 2);
             Imgproc.line(original, new Point(c.x, c.y + 10), new Point(c.x, c.y - 10), new Scalar(255, 0, 0), 2);
-            Imgproc.rectangle(original, roi.tl(), roi.br(), new Scalar(0,255,0));
+            Imgproc.rectangle(original, roi.tl(), roi.br(), new Scalar(0, 255, 0));
             // update the background
-            if (c.x > MAX_X/2.0 - 5 && c.x < MAX_X/2.0 + 5){
-                handler.post(new Runnable(){
-                     @Override
-                     public void run() {
-                         colorScreen.setBackgroundColor(green);
-                     }
-                 });
-            }
-            else {
+            if (c.x > MAX_X / 2.0 - 5 && c.x < MAX_X / 2.0 + 5) {
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        colorScreen.setBackgroundColor(green);
+                    }
+                });
+            } else {
                 handler.post(new Runnable() {
                     @Override
                     public void run() {
@@ -294,7 +307,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             }
 
         }
-
         else {
             Imgproc.putText(original, "No Target Detected", new Point(10, 20), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(0, 0, 255));
             handler.post(new Runnable() {
@@ -305,8 +317,18 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             });
         }
 
-        writeToFile(fileName, "" + df.format(c.x) + " " + df.format(c.y));//+ " <> Time: " + df.format(System.currentTimeMillis()));
+        Log.d("->timelog", "draw crap on image t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+        _time = Calendar.getInstance().getTimeInMillis();
 
+        //draw boundaries
+        Imgproc.line(original, new Point(0, TargetFinder.MIN_Y_COORD), new Point(TargetFinder.RES_X, TargetFinder.MIN_Y_COORD), new Scalar(20, 20, 20), 2);
+        Imgproc.line(original, new Point(0, TargetFinder.MAX_Y_COORD), new Point(TargetFinder.RES_X, TargetFinder.MAX_Y_COORD), new Scalar(20, 20, 20), 2);
+
+
+        //writeToFile(fileName, "" + df.format(c.x) + " " + df.format(c.y));//+ " <> Time: " + df.format(System.currentTimeMillis()));
+
+        Log.d("->timelog", "draw 2 lines and write to file t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+        _time = Calendar.getInstance().getTimeInMillis();
 
         //post it to the rio
         clientThread = new Thread(new Client(c));
@@ -362,10 +384,10 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                 s.close();
             }
             catch (UnknownHostException e){
-                e.printStackTrace();
+                Log.e(TAG, "Unknown Host Error: " + e.getMessage());
             }
             catch (IOException e){
-                e.printStackTrace();
+                Log.e(TAG, "IO Error: " + e.getMessage());
             }
         }
     }

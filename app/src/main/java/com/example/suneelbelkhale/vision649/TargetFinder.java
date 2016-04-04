@@ -20,6 +20,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,9 +34,13 @@ public class TargetFinder {
     public static double CAM_UP_ANGLE = 5; //TODO
     public static double CAM_DOWN_ANGLE = 110;
 
+    public static double RES_X = 288;
+    public static double RES_Y = 352;
+
     public static double WIDTH_TARGET = 18.5; //in
     public static double STANDARD_VIEW_ANGLE = 0.454885;//0.9424778; //radians, for an Axis Camera 206 /////...54 degrees
-    public static double MAX_Y_COORD = 200; //TODO find the actual angle of camera and the corresponding max y coord
+    public static double MAX_Y_COORD = RES_Y / 1.15; //293 //TODO find the actual angle of camera and the corresponding max y coord
+    public static double MIN_Y_COORD = RES_Y / 4.3; //70
     public static double X_TARGET = 160;
     public static double K_PIX = 1.0/400;
 
@@ -50,6 +55,7 @@ public class TargetFinder {
     public Mat hierarchy;
     public List<MatOfPoint> contours;
     public Mat finalImage;
+    public Mat dilate, erode;
 
     Rect roi;
 
@@ -57,6 +63,12 @@ public class TargetFinder {
     static String HSVFileName = "hsv.txt";
     static String TAG = "TargetFinder";
 
+
+    public TargetFinder(){
+
+        dilate = Imgproc.getStructuringElement(Imgproc.MORPH_DILATE, new Size(3, 3));
+        erode = Imgproc.getStructuringElement(Imgproc.MORPH_ERODE, new Size(3, 3));
+    }
 
     //old method
 
@@ -207,7 +219,7 @@ public class TargetFinder {
 
         //Core.inRange(imageHSV, new Scalar(78, 124, 213), new Scalar(104, 255, 255), imageHSV);
 
-        Scalar[] vals = readHSVElements();
+        Scalar[] vals = readElements(HSVFileName);
 
         if (vals == null){
             vals = new Scalar[2];
@@ -224,10 +236,10 @@ public class TargetFinder {
     }
 
     //reading from text file
-    public Scalar[] readHSVElements(){
+    public Scalar[] readElements(String filename){
         try {
             File root = new File(Environment.getExternalStorageDirectory(), "Vision");
-            File filepath = new File(root, HSVFileName);  // file path to save
+            File filepath = new File(root, filename);  // file path to save
             BufferedReader in = new BufferedReader(new FileReader(filepath));
 
             String str1 = in.readLine();
@@ -290,70 +302,99 @@ public class TargetFinder {
      *  -> "blobMat" after find contours of blobs
      *
      */
+
     public Map<String, Object> shapeDetectTarget(Mat m){
+        long _time = Calendar.getInstance().getTimeInMillis();
 
         Center center = NO_CENTER;
         Mat hsv = new Mat();
-        Mat dilate = Imgproc.getStructuringElement(Imgproc.MORPH_DILATE, new Size(3, 3));
-        Mat erode = Imgproc.getStructuringElement(Imgproc.MORPH_ERODE, new Size(3, 3));
+        Mat ycrcb = new Mat();
 
-        Imgproc.GaussianBlur(m, m, new org.opencv.core.Size(11, 11), 0);
+        Imgproc.GaussianBlur(m, m, new org.opencv.core.Size(5, 5), 0);
+        //Imgproc.medianBlur(m, m, 11);
+
+        Log.d("->timelog", "GAUSSIAN t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+        _time = Calendar.getInstance().getTimeInMillis();
 
         List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
         List<MatOfInt> hull = new ArrayList<MatOfInt>();
 
 
+        //Imgproc.cvtColor(m, ycrcb, Imgproc.COLOR_RGB2YCrCb);
+//        Imgproc.cvtColor(m, ycrcb, Imgproc.COLOR_RGB2Luv);
+//        Scalar[] scalars = readElements("Lab.txt");
+//        Log.d(TAG, scalars.toString());
+//        Core.inRange(ycrcb, scalars[0], scalars[1],ycrcb);
 
-        //hsv side
-        Imgproc.cvtColor(m, hsv, Imgproc.COLOR_BGR2HSV);
-        Core.inRange(hsv, new Scalar(25, 2, 180), new Scalar(120, 180, 255), hsv); //relatively loose
+        //Core.inRange(hsv, new Scalar(25, 2, 180), new Scalar(120, 255, 255), hsv); //relatively loose
+//        //TROLL NOT ACTUALLY HSV HAHA
+//        Imgproc.cvtColor(m, hsv, Imgproc.COLOR_RGB2YCrCb);
+//        Scalar[] scalars = readElements("ycrcb.txt");
+//        Core.inRange(hsv, scalars[0], scalars[1],hsv);
 
-        Imgproc.dilate(hsv, hsv, dilate);//dilate
-        Imgproc.erode(hsv, hsv, erode);
-        Imgproc.dilate(hsv, hsv, dilate);
-        Imgproc.dilate(m, m, dilate);
+        HSVThread hsvSide = new HSVThread(m);
+        hsvSide.start();
+        GrayThread graySide = new GrayThread(m);
+        graySide.start();
 
-        //brightness side
-        Imgproc.cvtColor(m, m, Imgproc.COLOR_BGR2GRAY);
-        Imgproc.threshold(m, m, 210, 255, Imgproc.THRESH_TOZERO);
+        try {
+            graySide.join();
+            hsvSide.join();
+        } catch (InterruptedException e){
+            e.printStackTrace();
+        }
 
-        Imgproc.dilate(m, m, dilate);//dilate
-        Imgproc.erode(m, m, erode);
-        Imgproc.dilate(m, m, dilate);
-        Imgproc.dilate(m, m, dilate);
+        Log.d("->timelog", "Both threads t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+        _time = Calendar.getInstance().getTimeInMillis();
+
 
         //find overlap
         Mat combined = new Mat();
-        Core.bitwise_and(m, hsv, combined); //think &&
-        Imgproc.dilate(combined, m, dilate); //dilate to be safe
+        try {
+            Core.bitwise_and(hsvSide.getFinalMat(), graySide.getFinalMat(), m); //think &&
+        }
+        catch(Exception e){
+            return new HashMap<>(); //dun got broked, don' do this
+        }
+
+        //Imgproc.dilate(combined, m, dilate); //dilate to be safe
 
         Mat thresh = new Mat(), subImage = new Mat();
         m.copyTo(thresh); //copy filtered image
 
+        Log.d("->timelog", "Bit AND & dilate t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+        _time = Calendar.getInstance().getTimeInMillis();
+
         Imgproc.findContours(m, contours, new Mat(), Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE);
 
+        Log.d("->timelog", "find contours t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+        _time = Calendar.getInstance().getTimeInMillis();
 
         MatOfInt hullInt = new MatOfInt();
-        MatOfPoint hullPointMat = new MatOfPoint();
+        MatOfPoint hullPointMat;
         List<Point> hullPointList = new ArrayList<>();
         List<MatOfPoint> hullPoints = new ArrayList<>();
 
         //draw convex Hulls
         for (int k=0; k < contours.size(); k++){
-            Imgproc.convexHull(contours.get(k), hullInt);
+            MatOfPoint cont = contours.get(k);
+
+            Imgproc.convexHull(cont, hullInt);
 
             hullPointList.clear();
-            for(int j=0; j < hullInt.toList().size(); j++){
-                hullPointList.add(contours.get(k).toList().get(hullInt.toList().get(j)));
+            for (int j = 0; j < hullInt.toList().size(); j++) {
+                hullPointList.add(cont.toList().get(hullInt.toList().get(j)));
             }
 
             hullPointMat = new MatOfPoint();
             hullPointMat.fromList(hullPointList);
             hullPoints.add(hullPointMat);
-
         }
         m = new Mat();
         thresh.copyTo(m); //bring the old one back and draw new stuff on it
+
+        Log.d("->timelog", "draw Convex hulls t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+        _time = Calendar.getInstance().getTimeInMillis();
 //
 //        //at this point thresh and m are the same (no contours just the threshold)
 //        //draw the full contours on both
@@ -374,18 +415,31 @@ public class TargetFinder {
             Imgproc.fillConvexPoly(m, hullPoints.get(i), new Scalar(255,255,255));
         }
 
+        Log.d("->timelog", "fillConvexPoly t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+        _time = Calendar.getInstance().getTimeInMillis();
+
 
         //now we are left with whatever was filled in
         Core.subtract(m, thresh, subImage);
 
+        Log.d("->timelog", "subtract images t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+        _time = Calendar.getInstance().getTimeInMillis();
+
         Imgproc.erode(subImage, subImage, erode);
-        Imgproc.erode(subImage, subImage, erode);
-        Imgproc.threshold(subImage,subImage,250,255,Imgproc.THRESH_BINARY);
+        //Imgproc.erode(subImage, subImage, erode);
+        Imgproc.threshold(subImage, subImage, 250, 255, Imgproc.THRESH_BINARY);
+
+        Log.d("->timelog", "2nd binary thresh t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+        _time = Calendar.getInstance().getTimeInMillis();
 
         Mat blobMat = new Mat();
         subImage.copyTo(blobMat);
         List<MatOfPoint> blobContours = new ArrayList<>();
         Imgproc.findContours(blobMat, blobContours, new Mat(), Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE);
+
+        Log.d("->timelog", "2nd find contours t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+        _time = Calendar.getInstance().getTimeInMillis();
+
 
         boolean noValid = true;
         Moments mu;
@@ -407,12 +461,12 @@ public class TargetFinder {
                 Point circ_center = new Point();
                 float[] radius = new float[1];
 
-
+                double y = mu.get_m01() / mu.get_m00();
 
                 Imgproc.minEnclosingCircle(new MatOfPoint2f(cont.toArray()), circ_center, radius);
                 boolean circle = Math.abs(area - Math.PI * radius[0] * radius[0]) < 5;
                 //greater than min size AND in the upper part of photo AND greater than the last biggest
-                if (area > 50.0 && area >= Imgproc.contourArea(blobContours.get(largest))&& approx.rows() == 4){ //&& !circle)) {
+                if (area > 50.0 && area >= Imgproc.contourArea(blobContours.get(largest))&& approx.rows() == 4 && y < MAX_Y_COORD && y > MIN_Y_COORD){ //&& !circle)) {
                     noValid = false;
                     largest = h;
 
@@ -421,6 +475,9 @@ public class TargetFinder {
 
 
             }
+
+            Log.d("->timelog", "filtering blobs t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+            _time = Calendar.getInstance().getTimeInMillis();
 
             roi = Imgproc.boundingRect(blobContours.get(largest));
             mu = Imgproc.moments(blobContours.get(largest));
@@ -450,6 +507,7 @@ public class TargetFinder {
         foundElements.put("combined", combined);
         foundElements.put("subImage", subImage);
         foundElements.put("blobMat", blobMat);
+//        foundElements.put("ycrcb", ycrcb);
 
 
         return foundElements;
@@ -461,6 +519,75 @@ public class TargetFinder {
         return view_pix * obj_in / (2*Math.tan(max_cam_angle) * obj_pix);
     }
 
+    public class HSVThread extends Thread{
+
+        Mat m;
+        boolean ready;
+
+        public HSVThread(Mat mat){
+            m = new Mat();
+            mat.copyTo(m);
+            ready = false; //kinda redundant but meh
+        }
+
+        @Override
+        public void run() {
+            if (m != null){
+                //hsv side
+                Imgproc.cvtColor(m, m, Imgproc.COLOR_BGR2HSV);
+                Scalar[] scalars = readElements(HSVFileName);
+                Core.inRange(m, scalars[0], scalars[1], m); //"15,2,210 - > 100,250,250"
+
+
+                Imgproc.dilate(m, m, dilate);//dilate
+                Imgproc.erode(m, m, erode);
+                //Imgproc.dilate(m, m, dilate);
+                Imgproc.dilate(m, m, dilate);
+                ready = true;
+            }
+        }
+
+        public Mat getFinalMat(){
+            if (ready){
+                return m;
+            }
+            return new Mat();
+        }
+    }
+
+    public class GrayThread extends Thread{
+
+        Mat m;
+        boolean ready;
+
+        public GrayThread(Mat mat){
+            m = new Mat();
+            mat.copyTo(m);
+            ready = false; //kinda redundant but meh
+        }
+
+        @Override
+        public void run() {
+            if (m != null){
+                //brightness side
+                Imgproc.cvtColor(m, m, Imgproc.COLOR_BGR2GRAY);
+                Imgproc.threshold(m, m, 180, 255, Imgproc.THRESH_TOZERO);
+
+                Imgproc.dilate(m, m, dilate);//dilate
+                Imgproc.erode(m, m, erode);
+                //Imgproc.dilate(m, m, dilate);
+                Imgproc.dilate(m, m, dilate);
+                ready = true;
+            }
+        }
+
+        public Mat getFinalMat(){
+            if (ready){
+                return m;
+            }
+            return new Mat();
+        }
+    }
 
 
 //        Imgproc.cornerHarris(m, cornerMat,2,3,0.04);
@@ -474,5 +601,7 @@ public class TargetFinder {
 //                }
 //            }
 //        }
+
+
 
 }
