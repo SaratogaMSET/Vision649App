@@ -87,4 +87,11 @@
 
     </RelativeLayout>
 
+    <RelativeLayout
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:layout_alignBottom="@+id/view"
+        android:layout_alignParentStart="false"
+        android:id="@+id/dataIn"></RelativeLayout>
+
 </RelativeLayout>

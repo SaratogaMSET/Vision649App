@@ -1,97 +1,66 @@
 package com.example.suneelbelkhale.vision649;
 
 import android.Manifest;
-import android.app.Activity;
-import android.content.Context;
+import android.app.PendingIntent;
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.ImageFormat;
-import android.graphics.PixelFormat;
-import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
-import android.hardware.camera2.CameraAccessException;
-import android.hardware.camera2.CameraCaptureSession;
-import android.hardware.camera2.CameraCharacteristics;
-import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
-import android.hardware.camera2.CameraMetadata;
-import android.hardware.camera2.CaptureRequest;
-import android.hardware.camera2.CaptureResult;
-import android.hardware.camera2.TotalCaptureResult;
-import android.hardware.camera2.params.StreamConfigurationMap;
-import android.media.Image;
-import android.media.ImageReader;
-import android.media.ImageWriter;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
-import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
-import android.util.Size;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.Surface;
 import android.view.SurfaceView;
-import android.view.TextureView;
-import android.view.View;
-import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.view.ViewGroup.LayoutParams;
-import android.widget.Button;
-import android.widget.EditText;
 import android.widget.RelativeLayout;
-import android.widget.TextView;
 
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
-import org.opencv.android.JavaCameraView;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
-import org.opencv.android.Utils;
 import org.opencv.core.Core;
-import org.opencv.core.CvType;
 import org.opencv.core.Mat;
-import org.opencv.core.MatOfInt;
-import org.opencv.core.MatOfPoint;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
-import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
-import org.opencv.imgproc.Moments;
 
 import java.io.BufferedReader;
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
+import java.io.InputStreamReader;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.net.UnknownHostException;
-import java.nio.ByteBuffer;
 import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Calendar;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.Enumeration;
 import java.util.Map;
-import java.util.Timer;
 
 
 public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2 {
     //from robot
-    String SERVER_IP = "10.6.49.70";
-    int SERVER_PORT = 5050;
+    protected static final String mTAG = "VisionServer";
+    protected static final int DROID_SIDE_SERVER_PORT = 5000;
+    protected String mLocalServerIp;
+    private Handler mHandler = new Handler();
+    private ServerSocket mLocalServerSocket;
+
+    String RIO_SIDE_SERVER_IP = "10.6.49.60";
+    int RIO_SIDE_SERVER_PORT = 5050;
 
     int MAX_X = 288, MAX_Y = 352; //cam resolution
     int green = Color.parseColor("#43fa00"), red = Color.parseColor("#fa0000");
@@ -104,9 +73,12 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     TargetFinder targetFinder;
 
     RelativeLayout colorScreen;
+    RelativeLayout checkBox;
 
     Thread clientThread;
     private PortraitCameraView mOpenCvCameraView;
+    private Camera.Parameters mCameraParameters;
+    public Camera mCamera;
 
     private static final int REQUEST_EXTERNAL_STORAGE = 1;
     private static String[] PERMISSIONS_STORAGE = {
@@ -165,8 +137,15 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-//        mCamera = Camera.open();
+           mCamera = Camera.open();
 //        mCamera.setDisplayOrientation(90);
+
+
+        mLocalServerIp = getLocalIpAddress();
+        Log.d(mTAG, "Server IP " + mLocalServerIp);
+
+        Thread fst = new Thread(new ServerThread());
+        fst.start();
 
         colorScreen = (RelativeLayout) findViewById(R.id.colorBack);
 
@@ -189,6 +168,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         if (mOpenCvCameraView != null)
             mOpenCvCameraView.disableView();
 
+        mOpenCvCameraView.releaseCamera();
     }
 
     @Override
@@ -374,12 +354,24 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         @Override
         public void run(){
             try {
-                Socket s = new Socket(SERVER_IP, SERVER_PORT); //set up on Robot
+                Socket s = new Socket(RIO_SIDE_SERVER_IP, RIO_SIDE_SERVER_PORT); //set up on Robot
                 DataOutputStream dos = new DataOutputStream(s.getOutputStream());
+
                 if (c != null) {
                     dos.writeUTF("" + c.x + ", " + c.y); //EG sent like:  120.2, 222.3
                     dos.flush();
                     dos.close();
+                }
+
+                DataInputStream dis = new DataInputStream(s.getInputStream());
+                System.out.println(dis.toString());
+
+                checkBox = (RelativeLayout) findViewById(R.id.dataIn);
+
+                if(dis.readBoolean()) {
+                    checkBox.setBackgroundColor(green);
+                } else {
+                    checkBox.setBackgroundColor(red);
                 }
                 s.close();
             }
@@ -392,6 +384,135 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
     }
 
+
+    private void switchToVision() {
+        Log.d(mTAG, "Bringing Application to Front");
+
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); // You need this if starting
+// the activity from a service
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP ); // You need this if starting
+
+        intent.setAction(Intent.ACTION_MAIN);
+        intent.addCategory(Intent.CATEGORY_LAUNCHER);
+        startActivity(intent);
+        mCamera.release();
+        finish();
+
+
+
+    }
+
+
+    private void startIpWebcam() {
+        Log.d(mTAG, "Bringing IpWebcam to Front");
+        Intent launcher = new Intent().setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+        Intent ipwebcam =
+                new Intent()
+                        .setClassName("com.pas.webcam", "com.pas.webcam.Rolling")
+                        .putExtra("cheats", new String[] {
+                                "set(Video,320,240)",
+                                "reset(Photo)",
+                                "set(Awake,true)",
+                                "reset(Port)",                 // Use default port 8080
+                        })
+                        .putExtra("hidebtn1", true)                // Hide help button
+                        .putExtra("caption2", "Run in background") // Change caption on "Actions..."
+                        .putExtra("intent2", launcher)             // And give button another purpose
+                        .putExtra("returnto", new Intent().setClassName(MainActivity.this, MainActivity.class.getName())); // Set activity to return to
+        startActivity(ipwebcam);
+
+
+    }
+
+
+    // Gets the ip address of phone's network
+    private String getLocalIpAddress() {
+        try {
+            for (Enumeration<NetworkInterface> en = NetworkInterface
+                    .getNetworkInterfaces(); en.hasMoreElements();) {
+                NetworkInterface intf = en.nextElement();
+                for (Enumeration<InetAddress> enumIpAddr = intf
+                        .getInetAddresses(); enumIpAddr.hasMoreElements();) {
+                    InetAddress inetAddress = enumIpAddr.nextElement();
+                    if (!inetAddress.isLoopbackAddress()) {
+                        return inetAddress.getHostAddress().toString();
+                    }
+                }
+            }
+        } catch (SocketException ex) {
+            Log.e("ServerActivity", ex.toString());
+        }
+        return null;
+    }
+
+    public class ServerThread implements Runnable {
+
+        public void run() {
+            try {
+                if (mLocalServerIp != null) {
+                    Log.d(mTAG, "Listening on IP: " + mLocalServerIp);
+
+                    mLocalServerSocket = new ServerSocket(DROID_SIDE_SERVER_PORT);
+                    mLocalServerSocket.setReuseAddress(true);
+                    while (true) {
+                        // LISTEN FOR INCOMING CLIENTS
+                        Socket client = mLocalServerSocket.accept();
+                        Log.d(mTAG, "Connected.");
+
+                        try {
+                            BufferedReader in = new BufferedReader(
+                                    new InputStreamReader(client.getInputStream()));
+                            String command = null;
+                            while ((command = in.readLine()) != null) {
+                                Log.d("ServerActivity", command);
+                                mHandler.post(new ProcessCommandRunnable(command));
+                            }
+                        } catch (Exception e) {
+                            Log.d(mTAG, "Oops. Connection interrupted. Please reconnect your phones.");
+                            e.printStackTrace();
+                        }
+                    }
+                } else {
+                    Log.d(mTAG, "Couldn't detect internet connection.");
+                }
+
+            } catch (final Exception e) {
+                Log.d(mTAG, "Error" + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void processCommand(String command) {
+        if (command.equals("webcam")) {
+            startIpWebcam();
+        } else if (command.equals("vision")) {
+            switchToVision();
+        } else {
+            Log.e(mTAG, "Unknown command" + command);
+        }
+    }
+
+
+    private class ProcessCommandRunnable implements Runnable {
+        private final String mCommand;
+
+        ProcessCommandRunnable(final String command) {
+            mCommand = command;
+        }
+
+        public void run() {
+            System.out.println(mCommand);
+            if (mCommand.equals("webcam")) {
+                startIpWebcam();
+            } else if (mCommand.equals("vision")) {
+                switchToVision();
+            } else {
+                Log.e(mTAG, "Unknown command" + mCommand);
+            }
+        }
+    }
 }
 
 

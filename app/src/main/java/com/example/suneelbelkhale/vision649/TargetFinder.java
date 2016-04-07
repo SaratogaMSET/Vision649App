@@ -39,8 +39,8 @@ public class TargetFinder {
 
     public static double WIDTH_TARGET = 18.5; //in
     public static double STANDARD_VIEW_ANGLE = 0.454885;//0.9424778; //radians, for an Axis Camera 206 /////...54 degrees
-    public static double MAX_Y_COORD = RES_Y / 1.15; //293 //TODO find the actual angle of camera and the corresponding max y coord
-    public static double MIN_Y_COORD = RES_Y / 4.3; //70
+    public static double MAX_Y_COORD = 352;//RES_Y / 10; //293 //TODO find the actual angle of camera and the corresponding max y coord
+    public static double MIN_Y_COORD = 170; //RES_Y / 1; //70
     public static double X_TARGET = 160;
     public static double K_PIX = 1.0/400;
 
