@@ -536,7 +536,8 @@ public class TargetFinder {
                 //hsv side
                 Imgproc.cvtColor(m, m, Imgproc.COLOR_BGR2HSV);
                 Scalar[] scalars = readElements(HSVFileName);
-                Core.inRange(m, scalars[0], scalars[1], m); //"15,2,210 - > 100,250,250"
+                Core.inRange(m, scalars[0], scalars[1], m); //"20,3,215 - > 75,250,250"
+                //used to be 15,2,210 -> 100,255,255
 
 
                 Imgproc.dilate(m, m, dilate);//dilate
@@ -571,7 +572,8 @@ public class TargetFinder {
             if (m != null){
                 //brightness side
                 Imgproc.cvtColor(m, m, Imgproc.COLOR_BGR2GRAY);
-                Imgproc.threshold(m, m, 180, 255, Imgproc.THRESH_TOZERO);
+                Imgproc.threshold(m, m, 180, 250, Imgproc.THRESH_TOZERO);
+//                Imgproc.threshold(m,m,200, 255, Imgproc.THRESH_BINARY);
 
                 Imgproc.dilate(m, m, dilate);//dilate
                 Imgproc.erode(m, m, erode);
