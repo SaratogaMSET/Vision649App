@@ -118,6 +118,17 @@ public class PortraitCameraView extends CameraBridgeViewBase implements PreviewC
                         params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
                     }
 
+                    //Exporsure settings
+
+                    //params.setAutoExposureLock(false);
+                    //params.setAutoWhiteBalanceLock(false);
+
+                 //   params.setWhiteBalance(params.WHITE_BALANCE_FLUORESCENT);
+                  //  params.setAutoWhiteBalanceLock(true);
+
+                 //   params.setAutoExposureLock(true);
+
+
                     mCamera.setParameters(params);
                     params = mCamera.getParameters();
 
@@ -162,6 +173,8 @@ public class PortraitCameraView extends CameraBridgeViewBase implements PreviewC
                 /* Finally we are ready to start the preview */
                     Log.d(TAG, "startPreview");
                     mCamera.startPreview();
+                    //   params.setAutoExposureLock(true);
+
                 }
                 else
                     result = false;
