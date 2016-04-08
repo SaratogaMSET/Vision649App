@@ -414,8 +414,10 @@ public class TargetFinder {
         MatOfPoint2f approx;
         Log.d(TAG, "H SIZE: " + hullPoints.size());
         for (int i = 0; i < hullPoints.size(); i++) {
+
             Imgproc.fillConvexPoly(m, hullPoints.get(i), new Scalar(255,255,255));
         }
+
 
         Log.d("->timelog", "fillConvexPoly t: " + (Calendar.getInstance().getTimeInMillis() - _time));
         _time = Calendar.getInstance().getTimeInMillis();

@@ -2,11 +2,16 @@ package com.example.suneelbelkhale.vision649;
 
 import android.Manifest;
 import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.hardware.Camera;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.hardware.camera2.CameraManager;
 import android.os.Bundle;
 import android.os.Environment;
@@ -19,6 +24,7 @@ import android.view.MenuItem;
 import android.view.SurfaceView;
 import android.view.WindowManager;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
 
 
 import org.opencv.android.BaseLoaderCallback;
@@ -59,8 +65,10 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     private Handler mHandler = new Handler();
     private ServerSocket mLocalServerSocket;
 
-    String RIO_SIDE_SERVER_IP = "10.6.49.60";
-    int RIO_SIDE_SERVER_PORT = 5050;
+    public Mat screenMat;
+
+    String RIO_SIDE_SERVER_IP = "10.6.49.2";
+    int RIO_SIDE_SERVER_PORT = 8001;
 
     int MAX_X = 288, MAX_Y = 352; //cam resolution
     int green = Color.parseColor("#43fa00"), red = Color.parseColor("#fa0000");
@@ -79,6 +87,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     private PortraitCameraView mOpenCvCameraView;
     private Camera.Parameters mCameraParameters;
     public Camera mCamera;
+    public static SensorManager mSensorManager;
+
+    SensorThread sensorThread;
 
     private static final int REQUEST_EXTERNAL_STORAGE = 1;
     private static String[] PERMISSIONS_STORAGE = {
@@ -154,11 +165,16 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         mOpenCvCameraView.setCvCameraViewListener(this);
         mOpenCvCameraView.setMaxFrameSize(600, 600);
 
+        mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
 
         targetFinder = new TargetFinder();
 
+        sensorThread = new SensorThread(this);
+        sensorThread.start();
 
+        screenMat = new Mat();
     }
 
     @Override
@@ -169,6 +185,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             mOpenCvCameraView.disableView();
 
         mOpenCvCameraView.releaseCamera();
+
+        sensorThread.onActivityPause();
     }
 
     @Override
@@ -179,6 +197,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                 mLoaderCallback);
 
         targetFinder = new TargetFinder();
+
+        sensorThread.onActivityResume();
     }
 
     @Override
@@ -186,6 +206,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         super.onDestroy();
         if (mOpenCvCameraView != null)
             mOpenCvCameraView.disableView();
+
+        sensorThread.interrupt();
     }
 
     @Override
@@ -210,6 +232,10 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         return super.onOptionsItemSelected(item);
     }
 
+
+
+    ///CAMERA
+
     @Override
     public void onCameraViewStarted(int width, int height) {
 
@@ -226,97 +252,23 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     public Mat onCameraFrame(PortraitCameraView.CvCameraViewFrame inputFrame) {
         //TODO this is where we will add image processing
 
+        Mat original = new Mat();
 
         double t1 = System.currentTimeMillis();
-
-        Mat m = new Mat(), original = new Mat();
-
-
         inputFrame.rgba().copyTo(original);
-
-        original.copyTo(m);
-
-        //initial
-        double _time = Calendar.getInstance().getTimeInMillis();
-
-        results = targetFinder.shapeDetectTarget(m);
-
-        Log.d("->timelog", "SHAPE DETECT TARGET FULL t: " + (Calendar.getInstance().getTimeInMillis() - _time));
-        _time = Calendar.getInstance().getTimeInMillis();
-
-        Center c = (Center)results.get("center");
-        m = (Mat)results.get("m");
-        Mat thresh = (Mat)results.get("thresh");
-        Mat subImage = (Mat)results.get("subImage");
-        Mat blobMat = (Mat)results.get("blobMat");
-        Mat combined = (Mat)results.get("combined");
-        Mat hsv = (Mat)results.get("hsv");
-//        Mat ycrcb = (Mat)results.get("ycrcb");
-        Rect roi = (Rect)results.get("roi");
-
-        Log.d("->timelog", "Pulling data t: " + (Calendar.getInstance().getTimeInMillis() - _time));
-        _time = Calendar.getInstance().getTimeInMillis();
-
-
-        DecimalFormat df = new DecimalFormat("#.##");
-
-        String formattedCenter = "C (" + df.format(c.x) + ", " + df.format(c.y) + ")";
-
-        //Log.d(TAG, formattedCenter);
-
-        if (!c.equals(TargetFinder.NO_CENTER)) {
-            Imgproc.putText(original, "FOUND: " + formattedCenter, new Point(10, 20), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(255, 0, 0));
-            Imgproc.line(original, new Point(c.x + 10, c.y), new Point(c.x - 10, c.y), new Scalar(255, 0, 0), 2);
-            Imgproc.line(original, new Point(c.x, c.y + 10), new Point(c.x, c.y - 10), new Scalar(255, 0, 0), 2);
-            Imgproc.rectangle(original, roi.tl(), roi.br(), new Scalar(0, 255, 0));
-            // update the background
-            if (c.x > MAX_X / 2.0 - 5 && c.x < MAX_X / 2.0 + 5) {
-                handler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        colorScreen.setBackgroundColor(green);
-                    }
-                });
-            } else {
-                handler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        colorScreen.setBackgroundColor(red);
-                    }
-                });
-            }
-
-        }
-        else {
-            Imgproc.putText(original, "No Target Detected", new Point(10, 20), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(0, 0, 255));
-            handler.post(new Runnable() {
-                @Override
-                public void run() {
-                    colorScreen.setBackgroundColor(red);
-                }
-            });
+        if (!original.empty()){
+            ProcessImage imageProcessor = new ProcessImage(original);
+            imageProcessor.start();
         }
 
-        Log.d("->timelog", "draw crap on image t: " + (Calendar.getInstance().getTimeInMillis() - _time));
-        _time = Calendar.getInstance().getTimeInMillis();
+        Log.d("->timelog", "Pulling data t: " + (System.currentTimeMillis() - t1));
 
-        //draw boundaries
-        Imgproc.line(original, new Point(0, TargetFinder.MIN_Y_COORD), new Point(TargetFinder.RES_X, TargetFinder.MIN_Y_COORD), new Scalar(20, 20, 20), 2);
-        Imgproc.line(original, new Point(0, TargetFinder.MAX_Y_COORD), new Point(TargetFinder.RES_X, TargetFinder.MAX_Y_COORD), new Scalar(20, 20, 20), 2);
-
-
-        //writeToFile(fileName, "" + df.format(c.x) + " " + df.format(c.y));//+ " <> Time: " + df.format(System.currentTimeMillis()));
-
-        Log.d("->timelog", "draw 2 lines and write to file t: " + (Calendar.getInstance().getTimeInMillis() - _time));
-        _time = Calendar.getInstance().getTimeInMillis();
-
-        //post it to the rio
-        clientThread = new Thread(new Client(c));
-        clientThread.start(); //hella
-
-        //Log.d("T>>>>>", "" + (System.currentTimeMillis() - t1));
-
-        return original;
+        if (!screenMat.empty()){
+            return screenMat;
+        }
+        else{
+            return inputFrame.rgba();
+        }
     }
 
 
@@ -344,17 +296,112 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
     }
 
-    public class Client implements Runnable{
-        Center c;
+    public synchronized void updateMat(Mat m){
+        screenMat = m;
+    }
 
-        public Client(Center c){
-            this.c = c;
+    public class ProcessImage extends Thread{
+        Mat m0;
+
+        public ProcessImage(Mat mat){
+            m0 = mat;
         }
 
         @Override
         public void run(){
+
+            Mat m = new Mat(), original = new Mat();
+            m0.copyTo(m);
+            m.copyTo(original);
+
+            //initial
+            double _time = Calendar.getInstance().getTimeInMillis();
+
+            results = targetFinder.shapeDetectTarget(m);
+
+            Log.d("->timelog", "SHAPE DETECT TARGET FULL t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+            _time = Calendar.getInstance().getTimeInMillis();
+
+            Center c = (Center)results.get("center");
+            m = (Mat)results.get("m");
+            Mat thresh = (Mat)results.get("thresh");
+            Mat subImage = (Mat)results.get("subImage");
+            Mat blobMat = (Mat)results.get("blobMat");
+            Mat combined = (Mat)results.get("combined");
+            Mat hsv = (Mat)results.get("hsv");
+    //        Mat ycrcb = (Mat)results.get("ycrcb");
+            Rect roi = (Rect)results.get("roi");
+
+            Log.d("->timelog", "Pulling data t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+            _time = Calendar.getInstance().getTimeInMillis();
+
+
+            DecimalFormat df = new DecimalFormat("#.##");
+
+            String formattedCenter = "C (" + df.format(c.x) + ", " + df.format(c.y) + ")";
+
+            //Log.d(TAG, formattedCenter);
+
+            if (!c.equals(TargetFinder.NO_CENTER)) {
+                Imgproc.putText(original, "FOUND: " + formattedCenter, new Point(10, 20), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(255, 0, 0));
+                Imgproc.line(original, new Point(c.x + 10, c.y), new Point(c.x - 10, c.y), new Scalar(255, 0, 0), 2);
+                Imgproc.line(original, new Point(c.x, c.y + 10), new Point(c.x, c.y - 10), new Scalar(255, 0, 0), 2);
+                Imgproc.rectangle(original, roi.tl(), roi.br(), new Scalar(0, 255, 0));
+                // update the background
+                if (c.x > MAX_X / 2.0 - 5 && c.x < MAX_X / 2.0 + 5) {
+                    handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            colorScreen.setBackgroundColor(green);
+                        }
+                    });
+                } else {
+                    handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            colorScreen.setBackgroundColor(red);
+                        }
+                    });
+                }
+
+            }
+            else {
+                Imgproc.putText(original, "No Target Detected", new Point(10, 20), Core.FONT_HERSHEY_PLAIN, 0.5, new Scalar(0, 0, 255));
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        colorScreen.setBackgroundColor(red);
+                    }
+                });
+            }
+
+            Log.d("->timelog", "draw crap on image t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+            _time = Calendar.getInstance().getTimeInMillis();
+
+            //draw boundaries
+            Imgproc.line(original, new Point(0, TargetFinder.MIN_Y_COORD), new Point(TargetFinder.RES_X, TargetFinder.MIN_Y_COORD), new Scalar(20, 20, 20), 2);
+            Imgproc.line(original, new Point(0, TargetFinder.MAX_Y_COORD), new Point(TargetFinder.RES_X, TargetFinder.MAX_Y_COORD), new Scalar(20, 20, 20), 2);
+
+            updateMat(original);
+
+            //writeToFile(fileName, "" + df.format(c.x) + " " + df.format(c.y));//+ " <> Time: " + df.format(System.currentTimeMillis()));
+
+            Log.d("->timelog", "draw 2 lines and write to file t: " + (Calendar.getInstance().getTimeInMillis() - _time));
+            _time = Calendar.getInstance().getTimeInMillis();
+
+
+            //Log.d("T>>>>>", "" + (System.currentTimeMillis() - t1));
+
+            m.release();
+            thresh.release();
+            subImage.release();
+            combined.release();
+            blobMat.release();
+            hsv.release();
+
+
             try {
-                Socket s = new Socket(RIO_SIDE_SERVER_IP, RIO_SIDE_SERVER_PORT); //set up on Robot
+                Socket s = new Socket(InetAddress.getLocalHost(), RIO_SIDE_SERVER_PORT); //set up on Robot
                 DataOutputStream dos = new DataOutputStream(s.getOutputStream());
 
                 if (c != null) {
